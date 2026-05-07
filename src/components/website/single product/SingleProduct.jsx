@@ -11,10 +11,11 @@ import {
   Minus,
   Plus,
   ChevronRight,
-  Share,
+  Share2,
   Loader2,
   CheckCircle,
   PackageX,
+  ZoomIn,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import ImageModal from "@/components/others/Imagemodal";
@@ -24,8 +25,99 @@ import { useSession } from "next-auth/react";
 import { toast } from "react-toastify";
 import ReviewForm from "@/components/others/ReviewFrom";
 
+/* ─────────────────────────────────────────────────────────
+   ReactQuill content styles injected once at module level.
+   These make sure every Quill format (headings, lists,
+   blockquote, code, bold, italic, links…) renders correctly
+   even though we only use dangerouslySetInnerHTML.
+───────────────────────────────────────────────────────── */
+const QUILL_STYLES = `
+  .ql-content h1 { font-size: 1.75rem; font-weight: 700; margin: 1.25rem 0 .5rem; line-height: 1.25; }
+  .ql-content h2 { font-size: 1.375rem; font-weight: 700; margin: 1.1rem 0 .45rem; line-height: 1.3; }
+  .ql-content h3 { font-size: 1.125rem; font-weight: 600; margin: 1rem 0 .4rem; line-height: 1.35; }
+  .ql-content p  { margin: 0 0 .85rem; line-height: 1.75; color: #374151; }
+  .ql-content strong { font-weight: 700; color: #111827; }
+  .ql-content em     { font-style: italic; }
+  .ql-content u      { text-decoration: underline; }
+  .ql-content s      { text-decoration: line-through; }
+  .ql-content a      { color: #2563eb; text-decoration: underline; }
+  .ql-content a:hover{ opacity: .8; }
+  .ql-content ul { list-style: disc; padding-left: 1.5rem; margin: .5rem 0 1rem; }
+  .ql-content ol { list-style: decimal; padding-left: 1.5rem; margin: .5rem 0 1rem; }
+  .ql-content li { margin-bottom: .35rem; line-height: 1.7; color: #374151; }
+  .ql-content blockquote {
+    border-left: 4px solid #e5e7eb;
+    padding: .5rem 1rem;
+    margin: 1rem 0;
+    color: #6b7280;
+    font-style: italic;
+    background: #f9fafb;
+    border-radius: 0 .375rem .375rem 0;
+  }
+  .ql-content pre {
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 1rem 1.25rem;
+    border-radius: .5rem;
+    overflow-x: auto;
+    font-size: .875rem;
+    margin: 1rem 0;
+  }
+  .ql-content code {
+    background: #f1f5f9;
+    color: #be185d;
+    padding: .125rem .375rem;
+    border-radius: .25rem;
+    font-size: .875em;
+  }
+  .ql-content img {
+    max-width: 100%;
+    border-radius: .5rem;
+    margin: .75rem 0;
+  }
+  .ql-content .ql-align-center { text-align: center; }
+  .ql-content .ql-align-right  { text-align: right; }
+  .ql-content .ql-align-justify { text-align: justify; }
+  .ql-content .ql-indent-1 { padding-left: 2rem; }
+  .ql-content .ql-indent-2 { padding-left: 4rem; }
+  .ql-content .ql-indent-3 { padding-left: 6rem; }
+`;
+
+function QuillStyleInjector() {
+  useEffect(() => {
+    if (document.getElementById("ql-custom-styles")) return;
+    const tag = document.createElement("style");
+    tag.id = "ql-custom-styles";
+    tag.textContent = QUILL_STYLES;
+    document.head.appendChild(tag);
+  }, []);
+  return null;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Star renderer helper
+───────────────────────────────────────────────────────── */
+function StarRow({ rating, size = "w-4 h-4" }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {[...Array(5)].map((_, i) => (
+        <Star
+          key={i}
+          className={`${size} ${
+            i < Math.floor(rating)
+              ? "fill-amber-400 text-amber-400"
+              : "text-gray-200 fill-gray-200"
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MAIN COMPONENT
+═══════════════════════════════════════════════════════════ */
 export default function SingleProductDetail({ productData }) {
-  // external stores & session
   const { cartItems, addToCart, updateCartItemQuantity } = useCartWithSession();
   const { wishlist, toggleWishlist, fetchWishlist } = useWishlistStore();
   const { data: session, status } = useSession();
@@ -34,14 +126,14 @@ export default function SingleProductDetail({ productData }) {
 
   const hasImages = productData?.images?.length > 0;
   const [selectedImage, setSelectedImage] = useState(
-    hasImages ? productData.images[0].url : productData.mainImage
+    hasImages ? productData.images[0].url : productData.mainImage,
   );
   const [thumbIndex, setThumbIndex] = useState(0);
   const [selectedColor, setSelectedColor] = useState(
-    (productData?.availableColors?.split(",") || [])[0]?.trim() || null
+    (productData?.availableColors?.split(",") || [])[0]?.trim() || null,
   );
   const [selectedSize, setSelectedSize] = useState(
-    (productData?.availableSizes?.split(",") || [])[0]?.trim() || null
+    (productData?.availableSizes?.split(",") || [])[0]?.trim() || null,
   );
   const [isAdding, setIsAdding] = useState(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
@@ -49,7 +141,6 @@ export default function SingleProductDetail({ productData }) {
   const [reviewsToShow, setReviewsToShow] = useState(5);
   const [activeTab, setActiveTab] = useState("Product Details");
 
-  // helper arrays
   const availableColors = (productData?.availableColors || "")
     .split(",")
     .map((c) => c.trim())
@@ -59,42 +150,37 @@ export default function SingleProductDetail({ productData }) {
     .map((s) => s.trim())
     .filter(Boolean);
 
-  // cart item matching (keeps your scheme)
-  const itemIdentifier = `${productData.id}-${selectedSize || "no-size"}-${
-    selectedColor || "no-color"
-  }`;
+  const itemIdentifier = `${productData.id}-${selectedSize || "no-size"}-${selectedColor || "no-color"}`;
   const currentCartItem = cartItems.find((it) => it.id === itemIdentifier);
   const isInCart = !!currentCartItem;
   const isWishlisted = wishlist.some((it) => it.id === productData.id);
-
-  // derived quantity & updating flag (from cart item if available)
   const quantity = currentCartItem?.quantity || 1;
   const isUpdating = currentCartItem?.isUpdating || false;
 
-  // fetch wishlist on login
   useEffect(() => {
     if (isLoggedIn) fetchWishlist();
   }, [isLoggedIn, fetchWishlist]);
 
-  // reviews stats
   const reviewsData = productData?.reviews || [];
   const reviewsCount = reviewsData.length;
   const totalRating = reviewsData.reduce((s, r) => s + (r.rating || 0), 0);
   const averageRating =
     reviewsCount > 0 ? (totalRating / reviewsCount).toFixed(1) : 0;
 
-  // helpers
   const priceFormatted = (n) =>
     typeof n === "number" ? n.toLocaleString("en-BD") : n;
   const formatDate = (iso) => {
     try {
-      return new Date(iso).toLocaleDateString();
+      return new Date(iso).toLocaleDateString("en-BD", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
     } catch {
       return iso;
     }
   };
 
-  // ----- actions (preserve your signatures) -----
   const handleAddToCart = async () => {
     if (!isLoggedIn) {
       toast.error("Please log in to add to cart.");
@@ -112,11 +198,10 @@ export default function SingleProductDetail({ productData }) {
       toast.warn("Please select a color.");
       return;
     }
-
     setIsAdding(true);
     try {
       await addToCart(productData.id, 1, selectedSize, selectedColor);
-    } catch (err) {
+    } catch {
       toast.error("Failed to add to cart.");
     } finally {
       setIsAdding(false);
@@ -124,12 +209,11 @@ export default function SingleProductDetail({ productData }) {
   };
 
   const handleUpdateQuantity = async (newQty) => {
-    if (!currentCartItem) return;
-    if (newQty < 1) return;
+    if (!currentCartItem || newQty < 1) return;
     await updateCartItemQuantity(
       currentCartItem.dbItemId,
       newQty,
-      currentCartItem.id
+      currentCartItem.id,
     );
   };
 
@@ -140,7 +224,7 @@ export default function SingleProductDetail({ productData }) {
     }
     toggleWishlist(productData, isWishlisted);
     toast.success(
-      isWishlisted ? "Item removed from wishlist." : "Item added to wishlist!"
+      isWishlisted ? "Removed from wishlist." : "Added to wishlist!",
     );
   };
 
@@ -154,15 +238,12 @@ export default function SingleProductDetail({ productData }) {
         });
       } else {
         await navigator.clipboard.writeText(window.location.href);
-        toast.info("Product URL copied to clipboard.");
+        toast.info("Link copied to clipboard.");
       }
-    } catch (err) {
-      console.error("share failed", err);
-      toast.error("Could not share item.");
+    } catch {
+      toast.error("Could not share.");
     }
   };
-
-  const handleLoadMore = () => setReviewsToShow((p) => p + 5);
 
   const onThumbClick = (url, idx) => {
     if (!url) return;
@@ -173,7 +254,7 @@ export default function SingleProductDetail({ productData }) {
   const openImageModal = (images, index = 0) => {
     setCurrentImageIndex(index);
     setIsImageModalOpen(true);
-    if (images && images[index]) setSelectedImage(images[index]);
+    if (images?.[index]) setSelectedImage(images[index]);
   };
 
   const onOpenGalleryModal = () => {
@@ -188,327 +269,294 @@ export default function SingleProductDetail({ productData }) {
     (availableSizes.length > 0 && !selectedSize) ||
     (availableColors.length > 0 && !selectedColor);
 
-  const BuyDetails = () => {
-    return (
-      <>
-        <div className=" border rounded-xl p-6 shadow-sm">
-          <h1 className="text-2xl font-medium break-words">
-            {productData.name}
-          </h1>
+  const discountPct = productData.discount > 0 ? productData.discount : null;
+  const inStock = productData.stockAmount > 0;
 
-          <div className="flex items-center mt-3">
-            <div className="flex items-center text-yellow-400">
-              {[...Array(5)].map((_, i) => (
-                <Star
-                  key={i}
-                  className={`w-4 h-4 ${
-                    i < Math.floor(averageRating)
-                      ? "fill-current"
-                      : "text-gray-300"
-                  }`}
-                />
-              ))}
-            </div>
-            <span className="ml-3 text-sm text-gray-600">
-              {averageRating} ({reviewsCount})
-            </span>
-          </div>
+  /* ── Purchase Panel (shared desktop + mobile) ── */
+  const PurchasePanel = () => (
+    <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-5">
+      {/* Title */}
+      <div>
+        <h1 className="text-xl lg:text-2xl font-bold text-gray-900 leading-snug">
+          {productData.name}
+        </h1>
 
-          <div className="mt-4 flex items-baseline gap-3">
-            <div className="text-3xl lg:text-4xl font-extrabold text-primary">
-              ৳ {priceFormatted(productData.price)}
-            </div>
-            {productData.oldPrice > 0 && (
-              <div className="text-sm line-through text-gray-400">
-                ৳ {priceFormatted(productData.oldPrice)}
-              </div>
-            )}
-            {productData.discount > 0 && (
-              <div className="ml-auto px-2 py-1 bg-red-100 text-red-600 rounded-full text-xs font-semibold">
-                -{productData.discount}%
-              </div>
-            )}
-          </div>
-
-          <div
-            className={`inline-flex my-3 items-center rounded-full border px-3 py-1 text-xs font-semibold tracking-wide transition-colors ${
-              productData.stockAmount > 0
-                ? "border-transparent bg-green-100 text-green-700" // In Stock: Green Badge
-                : "border-transparent bg-red-100 text-red-700" // Out of Stock: Red Badge
-            }`}
-          >
-            {/* Conditional Icon (Lucide-React) */}
-            {productData.stockAmount > 0 ? (
-              <CheckCircle className="w-4 h-4 mr-1.5" />
-            ) : (
-              <PackageX className="w-4 h-4 mr-1.5" />
-            )}
-
-            {/* Stock Text */}
-            <span className="mr-1">Stock:</span>
-            <span className="font-bold">
-              {productData.stockAmount > 0
-                ? `${productData.stockAmount} available`
-                : "Out of stock"}
-            </span>
-          </div>
-          <p className="text-sm text-gray-600 mt-3">
-            {productData.shortdescription}
-          </p>
-
-          {/* variants desktop */}
-          {availableColors.length > 0 && (
-            <div className="mt-4">
-              <div className="flex items-center justify-between">
-                <div className="font-medium text-gray-700">Color</div>
-                <div className="text-sm text-gray-400">
-                  {selectedColor || "None"}
-                </div>
-              </div>
-              <div className="flex gap-2 mt-2">
-                {availableColors.map((color, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setSelectedColor(color)}
-                    className={`w-9 h-9 rounded-full border transition-transform ${
-                      selectedColor === color
-                        ? "ring-2 ring-primary scale-105"
-                        : "hover:scale-105"
-                    }`}
-                    style={{ backgroundColor: color }}
-                    aria-label={`Select color ${color}`}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {availableSizes.length > 0 && (
-            <div className="mt-4">
-              <div className="flex items-center justify-between">
-                <div className="font-medium text-gray-700">Size</div>
-                <div className="text-sm text-gray-400">
-                  {selectedSize || "None"}
-                </div>
-              </div>
-              <div className="flex gap-2 mt-2 flex-wrap">
-                {availableSizes.map((size) => (
-                  <Button
-                    key={size}
-                    variant={selectedSize === size ? "default" : "outline"}
-                    className="rounded-full px-4 py-2 text-sm"
-                    onClick={() => setSelectedSize(size)}
-                  >
-                    {size}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* quantity / add to cart desktop */}
-          <div className="mt-6 flex items-center gap-3">
-            {productData.stockAmount <= 0 ? (
-              <Button disabled className="w-full bg-gray-400 text-white py-3">
-                Sold Out
-              </Button>
-            ) : isInCart ? (
-              <div className="flex-1 flex items-center justify-between border rounded-full px-2 py-1">
-                <Button
-                  onClick={() => handleUpdateQuantity(quantity - 1)}
-                  disabled={isUpdating || quantity <= 1}
-                  variant="ghost"
-                  className="p-1 h-9 w-9"
-                >
-                  <Minus className="w-4 h-4" />
-                </Button>
-                <div className="text-lg font-semibold w-12 text-center">
-                  {isUpdating ? (
-                    <Loader2 className="w-4 h-4 animate-spin mx-auto" />
-                  ) : (
-                    quantity
-                  )}
-                </div>
-                <Button
-                  onClick={() => handleUpdateQuantity(quantity + 1)}
-                  disabled={isUpdating || quantity >= productData.stockAmount}
-                  variant="ghost"
-                  className="p-1 h-9 w-9"
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-            ) : (
-              <Button
-                onClick={handleAddToCart}
-                disabled={addButtonDisabled}
-                className="flex-1 py-4 font-semibold cursor-pointer text-base group relative overflow-hidden"
-              >
-                {isAdding ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Adding...
-                  </div>
-                ) : (
-                  <>
-                    <span className="inline-block transition-transform group-hover:-translate-y-6 group-hover:opacity-0">
-                      Add to Cart
-                    </span>
-                    <span className="absolute inset-0 flex items-center justify-center opacity-0 translate-y-6 group-hover:translate-y-0 group-hover:opacity-100 transition-all">
-                      <ShoppingCart className="w-5 h-5" />
-                    </span>
-                  </>
-                )}
-              </Button>
-            )}
-
-            <div className="flex items-center gap-2">
-              <Button
-                onClick={handleToggleWishlist}
-                variant="outline"
-                size="icon"
-                className={isLoggedIn ? "" : "cursor-not-allowed opacity-80"}
-              >
-                <Heart
-                  className={`w-5 h-5 ${
-                    isWishlisted ? "text-red-500 fill-current" : ""
-                  }`}
-                />
-              </Button>
-              <Button onClick={handleShare} variant="outline" size="icon">
-                <Share className="w-5 h-5" />
-              </Button>
-            </div>
-          </div>
-
-          {isInCart && (
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <Link href="/cart" className="col-span-1">
-                <Button variant="outline" className="w-full py-2">
-                  Go to Cart
-                </Button>
-              </Link>
-              <Link href="/checkout" className="col-span-1">
-                <Button className="w-full py-2">Checkout</Button>
-              </Link>
-            </div>
-          )}
-
-          {!isLoggedIn && (
-            <div className="text-center mt-4 text-sm text-gray-500">
-              Please log in to add to cart or wishlist.
-            </div>
-          )}
+        {/* Rating row */}
+        <div className="flex items-center gap-2 mt-2">
+          <StarRow rating={averageRating} />
+          <span className="text-sm font-medium text-gray-700">
+            {averageRating}
+          </span>
+          <span className="text-sm text-gray-400">
+            ({reviewsCount} reviews)
+          </span>
         </div>
-      </>
-    );
-  };
+      </div>
 
-  const MobilePurchaseCard = () => (
-    <div className="lg:hidden mt-6">
-      <BuyDetails />
+      {/* Divider */}
+      <div className="border-t border-dashed border-gray-100" />
+
+      {/* Price block */}
+      <div className="flex items-end gap-3 flex-wrap">
+        <span className="text-3xl font-extrabold text-gray-900 tracking-tight">
+          ৳{priceFormatted(productData.price)}
+        </span>
+        {productData.oldPrice > 0 && (
+          <span className="text-base line-through text-gray-400 mb-0.5">
+            ৳{priceFormatted(productData.oldPrice)}
+          </span>
+        )}
+        {discountPct && (
+          <span className="mb-1 px-2.5 py-0.5 bg-red-50 text-red-600 rounded-full text-xs font-bold border border-red-100">
+            -{discountPct}% OFF
+          </span>
+        )}
+      </div>
+
+      {/* Stock badge */}
+      <div
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${
+          inStock
+            ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+            : "bg-red-50 text-red-700 border-red-100"
+        }`}
+      >
+        {inStock ? (
+          <CheckCircle className="w-3.5 h-3.5" />
+        ) : (
+          <PackageX className="w-3.5 h-3.5" />
+        )}
+        {inStock ? `${productData.stockAmount} in stock` : "Out of stock"}
+      </div>
+
+      {/* Short description */}
+      {productData.shortdescription && (
+        <p className="text-sm text-gray-500 leading-relaxed">
+          {productData.shortdescription}
+        </p>
+      )}
+
+      {/* Color picker */}
+      {availableColors.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-gray-700">Color</span>
+            <span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">
+              {selectedColor || "Select"}
+            </span>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {availableColors.map((color, i) => (
+              <button
+                key={i}
+                onClick={() => setSelectedColor(color)}
+                className={`w-8 h-8 rounded-full border-2 transition-all ${
+                  selectedColor === color
+                    ? "border-gray-800 scale-110 shadow-md"
+                    : "border-transparent hover:border-gray-300 hover:scale-105"
+                }`}
+                style={{ backgroundColor: color }}
+                aria-label={`Color: ${color}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Size picker */}
+      {availableSizes.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-gray-700">Size</span>
+            <span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">
+              {selectedSize || "Select"}
+            </span>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {availableSizes.map((size) => (
+              <button
+                key={size}
+                onClick={() => setSelectedSize(size)}
+                className={`min-w-[2.5rem] px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                  selectedSize === size
+                    ? "bg-gray-900 text-white border-gray-900 shadow-sm"
+                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                }`}
+              >
+                {size}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Divider */}
+      <div className="border-t border-dashed border-gray-100" />
+
+      {/* Cart actions */}
+      <div className="flex items-stretch gap-3">
+        {productData.stockAmount <= 0 ? (
+          <Button
+            disabled
+            className="flex-1 h-11 text-sm font-semibold bg-gray-200 text-gray-500 cursor-not-allowed rounded-xl"
+          >
+            Sold Out
+          </Button>
+        ) : isInCart ? (
+          <div className="flex-1 flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+            <button
+              onClick={() => handleUpdateQuantity(quantity - 1)}
+              disabled={isUpdating || quantity <= 1}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white hover:shadow-sm transition disabled:opacity-40"
+            >
+              <Minus className="w-4 h-4 text-gray-600" />
+            </button>
+            <span className="text-base font-bold text-gray-900 w-10 text-center">
+              {isUpdating ? (
+                <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+              ) : (
+                quantity
+              )}
+            </span>
+            <button
+              onClick={() => handleUpdateQuantity(quantity + 1)}
+              disabled={isUpdating || quantity >= productData.stockAmount}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white hover:shadow-sm transition disabled:opacity-40"
+            >
+              <Plus className="w-4 h-4 text-gray-600" />
+            </button>
+          </div>
+        ) : (
+          <Button
+            onClick={handleAddToCart}
+            disabled={addButtonDisabled}
+            className="flex-1 h-11 rounded-xl text-sm font-semibold gap-2 transition-all active:scale-95"
+          >
+            {isAdding ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" /> Adding…
+              </>
+            ) : (
+              <>
+                <ShoppingCart className="w-4 h-4" /> Add to Cart
+              </>
+            )}
+          </Button>
+        )}
+
+        <button
+          onClick={handleToggleWishlist}
+          className={`w-11 h-11 flex items-center justify-center rounded-xl border transition-all ${
+            isWishlisted
+              ? "bg-red-50 border-red-200 text-red-500"
+              : "bg-white border-gray-200 text-gray-500 hover:border-gray-400"
+          }`}
+          title="Wishlist"
+        >
+          <Heart
+            className={`w-4.5 h-4.5 ${isWishlisted ? "fill-current" : ""}`}
+          />
+        </button>
+
+        <button
+          onClick={handleShare}
+          className="w-11 h-11 flex items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 hover:border-gray-400 transition-all"
+          title="Share"
+        >
+          <Share2 className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Go to cart / checkout */}
+      {isInCart && (
+        <div className="grid grid-cols-2 gap-3">
+          <Link href="/cart">
+            <Button
+              variant="outline"
+              className="w-full h-10 rounded-xl text-sm"
+            >
+              View Cart
+            </Button>
+          </Link>
+          <Link href="/checkout">
+            <Button className="w-full h-10 rounded-xl text-sm">
+              Checkout →
+            </Button>
+          </Link>
+        </div>
+      )}
+
+      {!isLoggedIn && (
+        <p className="text-center text-xs text-gray-400 pt-1">
+          <Link
+            href="/login"
+            className="text-primary underline underline-offset-2"
+          >
+            Sign in
+          </Link>{" "}
+          to add items to cart or wishlist.
+        </p>
+      )}
     </div>
   );
 
   return (
-    <div className="container mx-auto px-4 py-8 lg:py-12">
-      <nav className="text-xs md:text-sm text-gray-500 dark:text-gray-400 mb-6 flex items-center gap-1.5 overflow-hidden">
-        <Link
-          href="/"
-          className="hover:text-primary dark:hover:text-primary transition-colors flex-shrink-0"
-        >
-          Home
-        </Link>
+    <>
+      <QuillStyleInjector />
 
-        <ChevronRight className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0" />
+      <div className="container mx-auto px-4 py-8 lg:py-12 max-w-7xl">
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-1.5 text-xs text-gray-400 mb-8 overflow-hidden">
+          {[
+            { label: "Home", href: "/" },
+            { label: "Shop", href: "/allproducts" },
+            { label: productData.category?.name || "Category", href: null },
+          ].map((crumb, i) => (
+            <React.Fragment key={i}>
+              {crumb.href ? (
+                <Link
+                  href={crumb.href}
+                  className="hover:text-gray-700 transition-colors flex-shrink-0"
+                >
+                  {crumb.label}
+                </Link>
+              ) : (
+                <span className="text-gray-500 flex-shrink-0">
+                  {crumb.label}
+                </span>
+              )}
+              <ChevronRight className="w-3 h-3 text-gray-300 flex-shrink-0" />
+            </React.Fragment>
+          ))}
+          <span
+            className="text-gray-700 font-medium truncate min-w-0"
+            title={productData.name}
+          >
+            {productData.name}
+          </span>
+        </nav>
 
-        <Link
-          href="/allproducts"
-          className="hover:text-primary dark:hover:text-primary transition-colors flex-shrink-0"
-        >
-          Shop
-        </Link>
-
-        <ChevronRight className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0" />
-
-        <span className="text-gray-700 dark:text-gray-300 flex-shrink-0">
-          {productData.category?.name || "Category"}
-        </span>
-
-        <ChevronRight className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0" />
-
-        <span
-          className="font-medium text-gray-900 dark:text-white min-w-0 w-full truncate"
-          title={productData.name}
-        >
-          {productData.name || "Product Details"}
-        </span>
-      </nav>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left: gallery (span 7) */}
-        <div className="lg:col-span-7">
-          <div className="flex gap-4">
-            {/* vertical thumbnails on lg */}
-            {hasImages && (
-              <div className="hidden lg:flex flex-col gap-3 w-[88px] overflow-auto">
-                {productData.images.map((img, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => onThumbClick(img.url, idx)}
-                    className={`relative w-20 h-20 rounded-lg overflow-hidden border transition-all ${
-                      selectedImage === img.url
-                        ? "border-primary ring-1 ring-primary"
-                        : "border-gray-200"
-                    }`}
-                    aria-label={`Thumbnail ${idx + 1}`}
-                  >
-                    <Image
-                      src={img.url}
-                      alt={`${productData.name} thumbnail ${idx + 1}`}
-                      fill
-                      className="object-cover"
-                    />
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="flex-1">
-              <div
-                className="relative w-full h-[520px] bg-white border rounded-xl overflow-hidden shadow-md cursor-zoom-in"
-                onClick={onOpenGalleryModal}
-              >
-                {selectedImage ? (
-                  <Image
-                    src={selectedImage}
-                    alt={productData.name}
-                    fill
-                    className="object-contain"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400">
-                    No image available
-                  </div>
-                )}
-              </div>
-
-              {/* mobile thumbnails */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10">
+          {/* ── LEFT: Gallery ── */}
+          <div className="lg:col-span-7">
+            <div className="flex gap-4">
+              {/* Vertical thumbnails (desktop) */}
               {hasImages && (
-                <div className="mt-4 flex gap-3 lg:hidden overflow-x-auto pb-2">
+                <div className="hidden lg:flex flex-col gap-2.5 w-[76px] max-h-[540px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-gray-200">
                   {productData.images.map((img, idx) => (
                     <button
                       key={idx}
                       onClick={() => onThumbClick(img.url, idx)}
-                      className={`relative w-20 h-20 rounded-lg overflow-hidden transition-all ${
+                      className={`relative flex-shrink-0 w-[68px] h-[68px] rounded-xl overflow-hidden border-2 transition-all ${
                         selectedImage === img.url
-                          ? "ring-2 ring-primary"
-                          : "opacity-80 hover:opacity-100"
+                          ? "border-gray-800 shadow-md"
+                          : "border-gray-100 hover:border-gray-300"
                       }`}
-                      aria-label={`Thumbnail ${idx + 1}`}
+                      aria-label={`Image ${idx + 1}`}
                     >
                       <Image
                         src={img.url}
-                        alt={`thumb ${idx}`}
+                        alt={`thumb ${idx + 1}`}
                         fill
                         className="object-cover"
                       />
@@ -516,157 +564,250 @@ export default function SingleProductDetail({ productData }) {
                   ))}
                 </div>
               )}
-            </div>
-          </div>
 
-          {/* Mobile: show purchase card immediately after gallery (so actions come first on small screens) */}
-          <MobilePurchaseCard />
-
-          {/* Tabs content (Description / Reviews) */}
-          <div className="mt-10">
-            <div className="flex gap-6 border-b border-gray-100 pb-3">
-              {["Product Details", "Rating & Reviews"].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`pb-2 text-sm font-semibold transition ${
-                    activeTab === tab
-                      ? "border-b-2 border-primary text-primary"
-                      : "text-gray-600"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-6">
-              {activeTab === "Product Details" && (
+              {/* Main image */}
+              <div className="flex-1 min-w-0">
                 <div
-                  className="prose max-w-none text-gray-700"
-                  dangerouslySetInnerHTML={{ __html: productData.description }}
-                />
-              )}
-
-              {activeTab === "Rating & Reviews" && (
-                <div>
-                  <ReviewForm productId={productData.id} userId={userId} />
-
-                  <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {reviewsData.slice(0, reviewsToShow).map((review, idx) => (
-                      <article
-                        key={idx}
-                        className="p-5 border rounded-lg bg-white shadow-sm hover:shadow-md transition"
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex items-start gap-3">
-                            <Avatar className="h-10 w-10">
-                              <AvatarImage
-                                src={review.user?.image}
-                                alt={review.user?.name || "User"}
-                              />
-                              <AvatarFallback>
-                                {review.user?.name?.charAt(0) || "U"}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h4 className="font-semibold text-gray-800">
-                                  {review.user?.name || "Anonymous"}
-                                </h4>
-                                <div className="flex items-center text-yellow-400">
-                                  {[...Array(5)].map((_, i) => (
-                                    <Star
-                                      key={i}
-                                      className={`w-4 h-4 ${
-                                        i < review.rating
-                                          ? "fill-current"
-                                          : "text-gray-300"
-                                      }`}
-                                    />
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {formatDate(review.createdAt)}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <p className="text-gray-700 mt-4 text-sm leading-relaxed">
-                          {review.content}
-                        </p>
-
-                        {review.images && review.images.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mt-3">
-                            {review.images.slice(0, 4).map((imgObj, i) => (
-                              <button
-                                key={i}
-                                className="relative w-24 h-24 rounded-md overflow-hidden border"
-                                onClick={() =>
-                                  openImageModal(
-                                    review.images.map((im) => im.url),
-                                    i
-                                  )
-                                }
-                                aria-label={`Open review image ${i + 1}`}
-                              >
-                                <Image
-                                  src={imgObj.url}
-                                  alt={`review image ${i + 1}`}
-                                  fill
-                                  className="object-cover transition-transform group-hover:scale-110"
-                                />
-                                {i === 3 && review.images.length > 4 && (
-                                  <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center text-white text-sm font-semibold">
-                                    +{review.images.length - 4}
-                                  </div>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </article>
-                    ))}
-                  </div>
-
-                  <div className="mt-6 text-center">
-                    {reviewsToShow < reviewsCount && (
-                      <Button
-                        onClick={handleLoadMore}
-                        variant="outline"
-                        className="px-6"
-                      >
-                        Load More Reviews
-                      </Button>
-                    )}
+                  className="relative w-full h-[420px] md:h-[520px] bg-gray-50 border border-gray-100 rounded-2xl overflow-hidden shadow-sm cursor-zoom-in group"
+                  onClick={onOpenGalleryModal}
+                >
+                  {selectedImage ? (
+                    <Image
+                      src={selectedImage}
+                      alt={productData.name}
+                      fill
+                      className="object-contain transition-transform duration-300 group-hover:scale-105"
+                      priority
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-300 text-sm">
+                      No image available
+                    </div>
+                  )}
+                  {/* Zoom hint */}
+                  <div className="absolute bottom-3 right-3 bg-white/80 backdrop-blur-sm rounded-lg p-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm">
+                    <ZoomIn className="w-4 h-4 text-gray-600" />
                   </div>
                 </div>
-              )}
+
+                {/* Mobile thumbnails */}
+                {hasImages && (
+                  <div className="mt-3 flex gap-2.5 lg:hidden overflow-x-auto pb-1">
+                    {productData.images.map((img, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => onThumbClick(img.url, idx)}
+                        className={`relative flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all ${
+                          selectedImage === img.url
+                            ? "border-gray-800 shadow-sm"
+                            : "border-transparent opacity-70 hover:opacity-100"
+                        }`}
+                        aria-label={`Image ${idx + 1}`}
+                      >
+                        <Image
+                          src={img.url}
+                          alt={`thumb ${idx}`}
+                          fill
+                          className="object-cover"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Mobile purchase panel */}
+            <div className="lg:hidden mt-6">
+              <PurchasePanel />
+            </div>
+
+            {/* ── Tabs ── */}
+            <div className="mt-10">
+              <div className="flex gap-0 border-b border-gray-100">
+                {["Product Details", "Rating & Reviews"].map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`relative px-5 pb-3 pt-1 text-sm font-semibold transition-colors ${
+                      activeTab === tab
+                        ? "text-gray-900"
+                        : "text-gray-400 hover:text-gray-600"
+                    }`}
+                  >
+                    {tab}
+                    {activeTab === tab && (
+                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 rounded-full" />
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-7">
+                {/* ── Product Details (Quill content) ── */}
+                {activeTab === "Product Details" && (
+                  <div
+                    className="ql-content text-gray-700 leading-relaxed"
+                    dangerouslySetInnerHTML={{
+                      __html: productData.description,
+                    }}
+                  />
+                )}
+
+                {/* ── Reviews tab ── */}
+                {activeTab === "Rating & Reviews" && (
+                  <div className="space-y-8">
+                    {/* Summary bar */}
+                    {reviewsCount > 0 && (
+                      <div className="flex items-center gap-6 p-5 bg-gray-50 rounded-2xl border border-gray-100">
+                        <div className="text-center">
+                          <div className="text-4xl font-extrabold text-gray-900">
+                            {averageRating}
+                          </div>
+                          <StarRow rating={averageRating} size="w-3.5 h-3.5" />
+                          <div className="text-xs text-gray-400 mt-1">
+                            {reviewsCount} reviews
+                          </div>
+                        </div>
+                        <div className="flex-1 space-y-1.5">
+                          {[5, 4, 3, 2, 1].map((star) => {
+                            const count = reviewsData.filter(
+                              (r) => Math.floor(r.rating) === star,
+                            ).length;
+                            const pct =
+                              reviewsCount > 0
+                                ? (count / reviewsCount) * 100
+                                : 0;
+                            return (
+                              <div
+                                key={star}
+                                className="flex items-center gap-2 text-xs text-gray-500"
+                              >
+                                <span className="w-3 text-right">{star}</span>
+                                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                                <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-amber-400 rounded-full transition-all"
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                                <span className="w-6 text-right">{count}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <ReviewForm productId={productData.id} userId={userId} />
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {reviewsData
+                        .slice(0, reviewsToShow)
+                        .map((review, idx) => (
+                          <article
+                            key={idx}
+                            className="p-5 border border-gray-100 rounded-2xl bg-white shadow-sm hover:shadow-md transition-shadow"
+                          >
+                            <div className="flex items-start gap-3">
+                              <Avatar className="h-9 w-9 flex-shrink-0">
+                                <AvatarImage
+                                  src={review.user?.image}
+                                  alt={review.user?.name || "User"}
+                                />
+                                <AvatarFallback className="text-xs bg-gray-100 text-gray-600">
+                                  {review.user?.name?.charAt(0) || "U"}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-semibold text-sm text-gray-800 truncate">
+                                    {review.user?.name || "Anonymous"}
+                                  </span>
+                                  <StarRow
+                                    rating={review.rating}
+                                    size="w-3 h-3"
+                                  />
+                                </div>
+                                <span className="text-xs text-gray-400">
+                                  {formatDate(review.createdAt)}
+                                </span>
+                              </div>
+                            </div>
+
+                            <p className="text-sm text-gray-600 mt-3 leading-relaxed">
+                              {review.content}
+                            </p>
+
+                            {review.images?.length > 0 && (
+                              <div className="flex gap-2 mt-3 flex-wrap">
+                                {review.images.slice(0, 4).map((imgObj, i) => (
+                                  <button
+                                    key={i}
+                                    className="relative w-20 h-20 rounded-xl overflow-hidden border border-gray-100"
+                                    onClick={() =>
+                                      openImageModal(
+                                        review.images.map((im) => im.url),
+                                        i,
+                                      )
+                                    }
+                                    aria-label={`Review image ${i + 1}`}
+                                  >
+                                    <Image
+                                      src={imgObj.url}
+                                      alt={`review ${i + 1}`}
+                                      fill
+                                      className="object-cover hover:scale-105 transition-transform"
+                                    />
+                                    {i === 3 && review.images.length > 4 && (
+                                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-xs font-bold">
+                                        +{review.images.length - 4}
+                                      </div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </article>
+                        ))}
+                    </div>
+
+                    {reviewsToShow < reviewsCount && (
+                      <div className="text-center">
+                        <Button
+                          onClick={() => setReviewsToShow((p) => p + 5)}
+                          variant="outline"
+                          className="px-8 rounded-xl text-sm"
+                        >
+                          Load more reviews
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+
+          {/* ── RIGHT: sticky purchase panel (desktop only) ── */}
+          <aside className="hidden lg:block lg:col-span-5">
+            <div className="sticky top-24">
+              <PurchasePanel />
+            </div>
+          </aside>
         </div>
 
-        {/* Right: purchase card for desktop ONLY (hidden on mobile because we show MobilePurchaseCard) */}
-        <aside className="lg:col-span-5 hidden lg:block">
-          <div className="sticky top-24">
-            <BuyDetails />
-          </div>
-        </aside>
+        <ImageModal
+          isOpen={isImageModalOpen}
+          onClose={() => setIsImageModalOpen(false)}
+          images={
+            hasImages
+              ? productData.images.map((i) => i.url)
+              : [productData.mainImage]
+          }
+          initialIndex={currentImageIndex}
+        />
       </div>
-
-      {/* Image modal */}
-      <ImageModal
-        isOpen={isImageModalOpen}
-        onClose={() => setIsImageModalOpen(false)}
-        images={
-          hasImages
-            ? productData.images.map((i) => i.url)
-            : [productData.mainImage]
-        }
-        initialIndex={currentImageIndex}
-      />
-    </div>
+    </>
   );
 }

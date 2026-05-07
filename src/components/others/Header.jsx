@@ -12,6 +12,7 @@ import {
   Home,
   X,
   Loader2,
+  Truck,
 } from "lucide-react";
 import { toast } from "react-toastify";
 
@@ -45,7 +46,6 @@ const formatSlug = (name) => name.toLowerCase().replace(/\s/g, "-");
 export function useWishlistWithSession() {
   const { status } = useSession();
   const store = useWishlistStore();
-
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
@@ -83,9 +83,9 @@ export default function EcommerceHeader() {
   const [categoryError, setCategoryError] = useState(null);
 
   const searchInputRef = useRef(null);
-
   const router = useRouter();
 
+  // ── Fetch categories ──────────────────────────────────────────────────────
   useEffect(() => {
     async function fetchCategories() {
       try {
@@ -97,7 +97,9 @@ export default function EcommerceHeader() {
         }
         const { categories: data } = await response.json();
 
+        // FIX: preserve `id` alongside name & slug so navigation works
         const categoryNames = data.map((item) => ({
+          id: item.id,
           name: item.name,
           slug: item.slug || formatSlug(item.name),
         }));
@@ -116,39 +118,59 @@ export default function EcommerceHeader() {
     fetchCategories();
   }, []);
 
+  // ── Scroll detection with hysteresis (no flicker at threshold) ───────────
+  // Collapse when scrolled DOWN past the utility bar height (~96px).
+  // Only expand again when user scrolls back UP near the very top (<10px).
+  // This prevents the toggle-loop that happens with a single `scrollY > 50` check.
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    const COLLAPSE_AT = 96; // px — must scroll past this to collapse
+    const EXPAND_AT = 10; // px — must return this close to top to expand
+
+    let lastY = window.scrollY;
 
     const handleScroll = () => {
-      setScrolled(window.scrollY > 50);
+      const y = window.scrollY;
+      const goingDown = y > lastY;
+      lastY = y;
+
+      if (goingDown && y > COLLAPSE_AT) {
+        setScrolled(true);
+      } else if (!goingDown && y < EXPAND_AT) {
+        setScrolled(false);
+      }
+      // In the band between EXPAND_AT and COLLAPSE_AT: do nothing — no flicker.
     };
 
-    window.addEventListener("scroll", handleScroll);
-    handleScroll();
+    // Set correct initial state without animation
+    setScrolled(window.scrollY > COLLAPSE_AT);
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // ── Auto-focus mobile search input ───────────────────────────────────────
   useEffect(() => {
     if (mobileSearchOpen && searchInputRef.current) {
       const inputElement = searchInputRef.current.querySelector("input");
       if (inputElement) {
-        inputElement.focus();
+        setTimeout(() => inputElement.focus(), 50);
       }
     }
   }, [mobileSearchOpen]);
 
   const handleNavigation = (href) => router.push(href);
-
-  const UTILITY_BAR_HEIGHT = "96px";
-
   const closeMobileSearch = () => setMobileSearchOpen(false);
 
+  // ── Desktop category dropdown items ──────────────────────────────────────
   const categoryContent = loadingCategories ? (
-    <div className="flex justify-center items-center py-4">
-      <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading Categories...
+    <div className="flex justify-center items-center py-6 gap-2 text-muted-foreground">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      <span className="text-sm">Loading…</span>
     </div>
   ) : categoryError ? (
-    <div className="text-center text-red-500 py-4 text-sm">{categoryError}</div>
+    <div className="text-center text-destructive py-4 text-sm px-3">
+      {categoryError}
+    </div>
   ) : categories.length === 0 ? (
     <div className="text-center text-muted-foreground py-4 text-sm">
       No categories available.
@@ -157,7 +179,7 @@ export default function EcommerceHeader() {
     categories.map((cat) => (
       <DropdownMenuItem
         key={cat.slug}
-        className="text-base uppercase font-medium hover:bg-accent text-card-foreground cursor-pointer"
+        className="text-sm uppercase tracking-wide font-medium hover:bg-accent cursor-pointer px-4 py-2.5 rounded-md transition-colors"
         onClick={() => handleNavigation(`/allproducts?categoryId=${cat.id}`)}
       >
         {cat.name}
@@ -165,11 +187,12 @@ export default function EcommerceHeader() {
     ))
   );
 
+  // ── Mobile category buttons ───────────────────────────────────────────────
   const mobileCategoryButtons = categories.map((cat) => (
     <SheetClose asChild key={cat.slug}>
       <Button
         variant="outline"
-        className="justify-start truncate uppercase font-normal"
+        className="justify-start truncate uppercase text-xs font-semibold tracking-wide"
         onClick={() => handleNavigation(`/allproducts?categoryId=${cat.id}`)}
       >
         {cat.name}
@@ -179,177 +202,233 @@ export default function EcommerceHeader() {
 
   return (
     <>
-      <header
-        className={`w-full bg-primary sticky top-0 z-[100] transition-shadow duration-300 ${
-          scrolled ? "shadow-xl shadow-primary/40" : "shadow-md"
-        }`}
-      >
+      {/* ═══════════════════════════════════════════════
+          DESKTOP HEADER
+      ═══════════════════════════════════════════════ */}
+      <header className="hidden md:block w-full sticky top-0 z-[100]">
+        {/* ── Top utility bar (logo + search + actions) ── */}
         <div
-          className={`hidden md:block transition-all duration-500 ease-in-out bg-primary/90 z-[55] ${
-            scrolled ? "opacity-0 invisible" : "opacity-100 visible"
-          }`}
-          style={{
-            maxHeight: scrolled ? "0px" : UTILITY_BAR_HEIGHT,
-            overflow: "visible",
-          }}
+          className={`
+            w-full bg-primary
+            transition-all duration-300 ease-in-out origin-top
+            ${
+              scrolled
+                ? "max-h-0 opacity-0 overflow-hidden py-0"
+                : "max-h-[120px] opacity-100 overflow-visible py-4"
+            }
+          `}
         >
-          <div
-            className={`flex items-center justify-between px-4 lg:px-10 max-w-7xl mx-auto py-6 ${
-              scrolled ? "h-0 py-0" : "h-full"
-            }`}
-          >
+          <div className="flex items-center justify-between px-6 lg:px-10 max-w-7xl mx-auto">
+            {/* Logo */}
             <Link
               href="/"
-              className="text-3xl font-extrabold text-primary-foreground tracking-tight"
+              className="text-3xl font-extrabold text-primary-foreground tracking-tight shrink-0 hover:opacity-90 transition-opacity"
             >
               ShopEase
             </Link>
 
-            <div className="flex-1 max-w-xl mx-8 ">
+            {/* Search */}
+            <div className="flex-1 max-w-xl mx-8">
               <HeaderSearchComponent
-                placeholder="Search thousands of products..."
+                placeholder="Search thousands of products…"
                 className="w-full"
               />
             </div>
 
-            <div className="flex items-center gap-3 lg:gap-4">
+            {/* Actions */}
+            <div className="flex items-center gap-3 lg:gap-4 shrink-0">
               <DesktopActions />
             </div>
           </div>
         </div>
 
+        {/* ── Bottom nav bar (always visible) ── */}
         <div
-          className={`hidden md:flex items-center justify-between max-w-7xl mx-auto px-6 h-12 bg-primary/95 transition-all duration-300 ease-in-out ${
-            scrolled ? "border-t-0" : "border-t border-primary-foreground/20"
-          }`}
+          className={`
+            w-full bg-primary/95 border-t border-primary-foreground/20
+            transition-shadow duration-300
+            ${scrolled ? "shadow-lg shadow-primary/40" : ""}
+          `}
         >
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                className="bg-primary-foreground text-primary text-lg font-semibold px-6 rounded-none h-12 hover:bg-accent shadow-sm"
-                disabled={loadingCategories}
+          <div className="flex items-center justify-between max-w-7xl mx-auto px-6 h-12">
+            {/* LEFT: inline logo (only visible when scrolled) + categories */}
+            <div className="flex items-center gap-4">
+              {/* Logo appears in nav bar after scroll */}
+              <Link
+                href="/"
+                className={`
+                  text-xl font-extrabold text-primary-foreground tracking-tight
+                  transition-all duration-300 ease-in-out overflow-hidden
+                  ${scrolled ? "max-w-[140px] opacity-100 mr-2" : "max-w-0 opacity-0"}
+                `}
               >
-                {loadingCategories ? (
-                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                ) : (
-                  <Menu className="h-5 w-5 mr-2" />
-                )}
-                All Categories
-                {!loadingCategories && <ChevronDown className="h-5 w-5 ml-2" />}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-60 uppercase mt-1 shadow-lg border border-border bg-card">
-              {categoryContent}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                ShopEase
+              </Link>
 
-          <ul className="flex gap-10 lg:gap-14 py-2 text-base font-semibold text-primary-foreground">
-            {coreMenuLinks.map((link) => (
-              <li
-                key={link.name}
-                className="hover:text-primary-foreground/80 transition cursor-pointer"
-              >
-                <Link href={link.href}>{link.name}</Link>
-              </li>
-            ))}
-          </ul>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    className="bg-primary-foreground text-primary text-sm font-semibold px-5 rounded-none h-12 hover:bg-accent transition-colors shadow-none"
+                    disabled={loadingCategories}
+                  >
+                    {loadingCategories ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Menu className="h-4 w-4 mr-2" />
+                    )}
+                    All Categories
+                    {!loadingCategories && (
+                      <ChevronDown className="h-4 w-4 ml-2 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  className="w-56 mt-1 shadow-xl border border-border bg-card rounded-lg p-1"
+                  align="start"
+                  sideOffset={0}
+                >
+                  {categoryContent}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
 
-          <div className="text-sm font-medium text-primary-foreground/80 hidden lg:flex items-center">
-            🚚 Free Shipping Over $50
+            {/* CENTER: nav links */}
+            <nav>
+              <ul className="flex gap-8 lg:gap-12 text-sm font-semibold text-primary-foreground">
+                {coreMenuLinks.map((link) => (
+                  <li key={link.name}>
+                    <Link
+                      href={link.href}
+                      className="relative py-4 hover:text-primary-foreground/75 transition-colors duration-150 group"
+                    >
+                      {link.name}
+                      {/* underline hover effect */}
+                      <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-primary-foreground/60 transition-all duration-200 group-hover:w-full rounded-full" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+
+            {/* RIGHT: shipping badge */}
+            <div className="hidden lg:flex items-center gap-1.5 text-xs font-medium text-primary-foreground/80">
+              <Truck className="h-4 w-4" />
+              Free Shipping Over $50
+            </div>
           </div>
         </div>
       </header>
 
-      <div
-        className={`md:hidden ${
-          scrolled ? "shadow-xl shadow-primary/40" : "shadow-md"
-        } bg-primary sticky top-0 z-50`}
+      {/* ═══════════════════════════════════════════════
+          MOBILE HEADER
+      ═══════════════════════════════════════════════ */}
+      <header
+        className={`
+          md:hidden w-full bg-primary sticky top-0 z-50
+          transition-shadow duration-300
+          ${scrolled ? "shadow-xl shadow-primary/40" : "shadow-md"}
+        `}
       >
         <div className="flex items-center justify-between px-4 py-3 max-w-7xl mx-auto">
-          <div className="flex items-center gap-4">
+          {/* Left: hamburger + logo */}
+          <div className="flex items-center gap-3">
             <Sheet>
               <SheetTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-primary-foreground hover:bg-primary"
+                  className="text-primary-foreground hover:bg-primary-foreground/10 rounded-full"
+                  aria-label="Open navigation menu"
                 >
                   <Menu className="h-6 w-6" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-full p-0 bg-background">
-                <SheetHeader className="p-4 border-b border-border">
-                  <SheetTitle className="sr-only">Main Navigation</SheetTitle>
-                  <h2 className="text-xl font-semibold text-primary">
-                    Main Navigation
-                  </h2>
+
+              <SheetContent
+                side="left"
+                className="w-full max-w-sm p-0 bg-background"
+              >
+                <SheetHeader className="px-5 py-4 border-b border-border">
+                  <SheetTitle className="text-xl font-bold text-primary">
+                    ShopEase
+                  </SheetTitle>
                 </SheetHeader>
+
                 <Tabs
                   value={activeTab}
                   onValueChange={setActiveTab}
                   className="w-full"
                 >
-                  <TabsList className="grid grid-cols-2 h-12 w-full p-0 bg-card border-b border-border">
+                  <TabsList className="grid grid-cols-2 h-11 w-full rounded-none border-b border-border bg-muted/50 p-0">
                     <TabsTrigger
                       value="menu"
-                      className="rounded-none font-bold text-lg h-full data-[state=active]:shadow-none data-[state=active]:text-primary data-[state=active]:bg-card data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:mt-[1px] hover:bg-muted transition-colors"
+                      className="rounded-none h-full font-semibold text-sm data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none"
                     >
                       Menu
                     </TabsTrigger>
                     <TabsTrigger
                       value="categories"
-                      className="rounded-none font-bold text-lg h-full data-[state=active]:shadow-none data-[state=active]:text-primary data-[state=active]:bg-card data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:mt-[1px] hover:bg-muted transition-colors"
+                      className="rounded-none h-full font-semibold text-sm data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none"
                     >
                       Categories
                     </TabsTrigger>
                   </TabsList>
-                  <TabsContent value="menu" className="p-4 pt-0">
-                    <ul className="space-y-1 py-4">
+
+                  {/* Menu tab */}
+                  <TabsContent value="menu" className="mt-0 px-4 py-2">
+                    <ul className="space-y-0.5 py-2">
                       {coreMenuLinks.map((link) => (
                         <SheetClose asChild key={link.name}>
                           <li
-                            className="text-lg font-semibold text-foreground hover:bg-accent p-2 rounded-md transition-colors cursor-pointer"
+                            className="flex items-center gap-3 text-base font-semibold text-foreground hover:bg-accent px-3 py-3 rounded-lg transition-colors cursor-pointer"
                             onClick={() => handleNavigation(link.href)}
                           >
-                            <div className="flex items-center gap-3">
-                              <Home className="h-5 w-5 text-muted-foreground" />
-                              {link.name}
-                            </div>
+                            <Home className="h-4 w-4 text-muted-foreground shrink-0" />
+                            {link.name}
                           </li>
                         </SheetClose>
                       ))}
                     </ul>
-                    <Separator className="my-2" />
-                    <ul className="space-y-1">
+
+                    <Separator className="my-3" />
+
+                    <ul className="space-y-0.5">
                       {extendedLinks.map((link) => (
                         <SheetClose asChild key={link.name}>
                           <li
-                            className="text-base font-medium text-foreground hover:bg-accent p-2 rounded-md transition-colors cursor-pointer"
+                            className="flex items-center gap-3 text-sm font-medium text-foreground hover:bg-accent px-3 py-2.5 rounded-lg transition-colors cursor-pointer"
                             onClick={() => handleNavigation(link.href)}
                           >
-                            <div className="flex items-center gap-3">
-                              <link.icon className="h-5 w-5 text-muted-foreground" />
-                              {link.name}
-                            </div>
+                            <link.icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                            {link.name}
                           </li>
                         </SheetClose>
                       ))}
                     </ul>
+
+                    <Separator className="my-3" />
+
+                    <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted-foreground font-medium bg-muted/50 rounded-lg">
+                      <Truck className="h-4 w-4 shrink-0" />
+                      Free Shipping on orders over $50
+                    </div>
                   </TabsContent>
-                  <TabsContent value="categories" className="p-4 pt-0">
+
+                  {/* Categories tab */}
+                  <TabsContent value="categories" className="mt-0 px-4 py-2">
                     {loadingCategories ? (
-                      <div className="flex justify-center items-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin mr-2 text-primary" />
-                        <span className="text-primary font-medium">
-                          Loading...
+                      <div className="flex justify-center items-center py-10 gap-2">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                        <span className="text-sm text-muted-foreground font-medium">
+                          Loading…
                         </span>
                       </div>
                     ) : categoryError ? (
-                      <div className="text-center text-red-500 py-8 text-sm font-medium">
+                      <div className="text-center text-destructive py-8 text-sm font-medium">
                         Failed to load categories.
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 gap-2 py-4">
+                      <div className="grid grid-cols-2 gap-2 py-3">
                         {mobileCategoryButtons}
                       </div>
                     )}
@@ -360,71 +439,73 @@ export default function EcommerceHeader() {
 
             <Link
               href="/"
-              className="text-2xl font-extrabold text-primary-foreground tracking-tight"
+              className="text-2xl font-extrabold text-primary-foreground tracking-tight hover:opacity-90 transition-opacity"
             >
               ShopEase
             </Link>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-primary-foreground hover:bg-primary/80"
-              onClick={() => setMobileSearchOpen(true)}
-              aria-label="Open mobile search"
-            >
-              <Search className="h-6 w-6" />
-            </Button>
-          </div>
+          {/* Right: search icon */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-primary-foreground hover:bg-primary-foreground/10 rounded-full"
+            onClick={() => setMobileSearchOpen(true)}
+            aria-label="Open search"
+          >
+            <Search className="h-5 w-5" />
+          </Button>
         </div>
-      </div>
+      </header>
 
+      {/* ═══════════════════════════════════════════════
+          MOBILE SEARCH OVERLAY
+      ═══════════════════════════════════════════════ */}
+      {/* Backdrop */}
       <div
-        className={`fixed inset-0 z-[150] md:hidden transition-all duration-300 ease-in-out ${
-          mobileSearchOpen
-            ? "visible backdrop-blur-sm bg-background/95"
-            : "invisible bg-transparent"
-        }`}
-        aria-modal={mobileSearchOpen}
-        role="dialog"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            closeMobileSearch();
+        className={`
+          fixed inset-0 z-[140] md:hidden
+          transition-opacity duration-300
+          ${
+            mobileSearchOpen
+              ? "opacity-100 visible bg-background/80 backdrop-blur-sm"
+              : "opacity-0 invisible"
           }
-        }}
+        `}
+        onClick={closeMobileSearch}
+        aria-hidden="true"
+      />
+
+      {/* Search panel */}
+      <div
+        className={`
+          fixed top-0 left-0 right-0 z-[150] md:hidden
+          bg-card border-b border-border shadow-xl
+          transition-transform duration-300 ease-out
+          ${mobileSearchOpen ? "translate-y-0" : "-translate-y-full"}
+        `}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search"
       >
-        <div
-          className={`absolute left-0 right-0 z-[160] bg-card p-4 shadow-xl transition-transform duration-300 ease-out border-b border-border ${
-            mobileSearchOpen ? "translate-y-0" : "-translate-y-full"
-          }`}
-        >
-          <div className="flex items-center gap-2 max-w-4xl mx-auto">
-            <div className="flex-1 w-full" ref={searchInputRef}>
-              <HeaderSearchComponent
-                placeholder="Search thousands of products..."
-                className="w-full"
-                isMobile={true}
-                onClose={closeMobileSearch}
-              />
-            </div>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-foreground hover:bg-muted h-10 w-10 flex-shrink-0"
-              onClick={closeMobileSearch}
-              aria-label="Close search bar"
-            >
-              <X className="h-6 w-6" />
-            </Button>
+        <div className="flex items-center gap-2 px-4 py-3 max-w-4xl mx-auto">
+          <div className="flex-1" ref={searchInputRef}>
+            <HeaderSearchComponent
+              placeholder="Search thousands of products…"
+              className="w-full"
+              isMobile={true}
+              onClose={closeMobileSearch}
+            />
           </div>
-        </div>
-
-        <div className="pt-24 px-4 text-center">
-          <p className="text-sm text-muted-foreground italic">
-            {mobileSearchOpen ? "Start typing to see results." : ""}
-          </p>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-foreground hover:bg-muted rounded-full shrink-0"
+            onClick={closeMobileSearch}
+            aria-label="Close search"
+          >
+            <X className="h-5 w-5" />
+          </Button>
         </div>
       </div>
 
