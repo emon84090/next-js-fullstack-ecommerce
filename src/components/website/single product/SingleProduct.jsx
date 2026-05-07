@@ -26,75 +26,6 @@ import { toast } from "react-toastify";
 import ReviewForm from "@/components/others/ReviewFrom";
 
 /* ─────────────────────────────────────────────────────────
-   ReactQuill content styles injected once at module level.
-   These make sure every Quill format (headings, lists,
-   blockquote, code, bold, italic, links…) renders correctly
-   even though we only use dangerouslySetInnerHTML.
-───────────────────────────────────────────────────────── */
-const QUILL_STYLES = `
-  .ql-content h1 { font-size: 1.75rem; font-weight: 700; margin: 1.25rem 0 .5rem; line-height: 1.25; }
-  .ql-content h2 { font-size: 1.375rem; font-weight: 700; margin: 1.1rem 0 .45rem; line-height: 1.3; }
-  .ql-content h3 { font-size: 1.125rem; font-weight: 600; margin: 1rem 0 .4rem; line-height: 1.35; }
-  .ql-content p  { margin: 0 0 .85rem; line-height: 1.75; color: #374151; }
-  .ql-content strong { font-weight: 700; color: #111827; }
-  .ql-content em     { font-style: italic; }
-  .ql-content u      { text-decoration: underline; }
-  .ql-content s      { text-decoration: line-through; }
-  .ql-content a      { color: #2563eb; text-decoration: underline; }
-  .ql-content a:hover{ opacity: .8; }
-  .ql-content ul { list-style: disc; padding-left: 1.5rem; margin: .5rem 0 1rem; }
-  .ql-content ol { list-style: decimal; padding-left: 1.5rem; margin: .5rem 0 1rem; }
-  .ql-content li { margin-bottom: .35rem; line-height: 1.7; color: #374151; }
-  .ql-content blockquote {
-    border-left: 4px solid #e5e7eb;
-    padding: .5rem 1rem;
-    margin: 1rem 0;
-    color: #6b7280;
-    font-style: italic;
-    background: #f9fafb;
-    border-radius: 0 .375rem .375rem 0;
-  }
-  .ql-content pre {
-    background: #1e293b;
-    color: #e2e8f0;
-    padding: 1rem 1.25rem;
-    border-radius: .5rem;
-    overflow-x: auto;
-    font-size: .875rem;
-    margin: 1rem 0;
-  }
-  .ql-content code {
-    background: #f1f5f9;
-    color: #be185d;
-    padding: .125rem .375rem;
-    border-radius: .25rem;
-    font-size: .875em;
-  }
-  .ql-content img {
-    max-width: 100%;
-    border-radius: .5rem;
-    margin: .75rem 0;
-  }
-  .ql-content .ql-align-center { text-align: center; }
-  .ql-content .ql-align-right  { text-align: right; }
-  .ql-content .ql-align-justify { text-align: justify; }
-  .ql-content .ql-indent-1 { padding-left: 2rem; }
-  .ql-content .ql-indent-2 { padding-left: 4rem; }
-  .ql-content .ql-indent-3 { padding-left: 6rem; }
-`;
-
-function QuillStyleInjector() {
-  useEffect(() => {
-    if (document.getElementById("ql-custom-styles")) return;
-    const tag = document.createElement("style");
-    tag.id = "ql-custom-styles";
-    tag.textContent = QUILL_STYLES;
-    document.head.appendChild(tag);
-  }, []);
-  return null;
-}
-
-/* ─────────────────────────────────────────────────────────
    Star renderer helper
 ───────────────────────────────────────────────────────── */
 function StarRow({ rating, size = "w-4 h-4" }) {
@@ -502,8 +433,6 @@ export default function SingleProductDetail({ productData }) {
 
   return (
     <>
-      <QuillStyleInjector />
-
       <div className="container mx-auto px-4 py-8 lg:py-12 max-w-7xl">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-1.5 text-xs text-gray-400 mb-8 overflow-hidden">
@@ -647,7 +576,7 @@ export default function SingleProductDetail({ productData }) {
                 {/* ── Product Details (Quill content) ── */}
                 {activeTab === "Product Details" && (
                   <div
-                    className="ql-content text-gray-700 leading-relaxed"
+                    className="prose max-w-none text-gray-700"
                     dangerouslySetInnerHTML={{
                       __html: productData.description,
                     }}
